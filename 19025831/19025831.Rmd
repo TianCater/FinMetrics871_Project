@@ -1,0 +1,994 @@
+---
+# IMPORTANT: Change settings here, but DO NOT change the spacing.
+# Remove comments and add values where applicable.
+# The descriptions below should be self-explanatory
+
+title: "FTSE/JSE Listed Property: Investigating Time-Varying Correlations Using a DCC MV-GARCH Model"
+#subtitle: "This will appear as Right Header"
+
+documentclass: "elsarticle"
+
+# --------- Thesis title (Optional - set to FALSE by default).
+# You can move the details below around as you please.
+Thesis_FP: FALSE
+# Entry1: "An unbelievable study with a title spanning multiple lines."
+# Entry2: "\\textbf{Nico Katzke}" # textbf for bold
+# Entry3: "A thesis submitted toward the degree of Doctor of Philosophy"
+# Uni_Logo: Tex/Logo.png # Place a logo in the indicated location (from your root, e.g. defaults to ~/Tex/Logo.png) and uncomment this line. Leave uncommented for no image
+# Logo_width: 0.3 # If using a logo - use this to set width (size) of image
+# Entry4: "Under the supervision of: \\vfill Prof. Joe Smith and Dr. Frank Smith"
+# Entry5: "Stellenbosch University"
+# Entry6: April 2020
+# Entry7:
+# Entry8:
+
+# --------- Front Page
+# Comment: ----- Follow this pattern for up to 5 authors
+AddTitle: TRUE # Use FALSE when submitting to peer reviewed platform. This will remove author names.
+Author1: "Tian Cater^[_This project was generated using @Texevier, a package to create Elsevier templates for Rmarkdown._]"  # First Author - note the thanks message displayed as an italic footnote of first page.
+Ref1: "Financial Econometrics 871 Project 2022" # First Author's Affiliation
+Email1: "19025831\\@sun.ac.za" # First Author's Email address
+
+#Author2: "John Smith"
+Ref2: "University of Stellenbosch, Western Cape, South Africa"
+#Email2: "John\\@gmail.com"
+#CommonAffiliation_12: TRUE # If Author 1 and 2 have a common affiliation. Works with _13, _23, etc.
+
+#Author3: "John Doe"
+#Email3: "Joe\\@gmail.com"
+
+#CorrespAuthor_1: FALSE  # If corresponding author is author 3, e.g., use CorrespAuthor_3: TRUE
+
+# Comment out below to remove both. JEL Codes only given if keywords also given.
+#keywords: "Multivariate GARCH \\sep Kalman Filter \\sep Copula" # Use \\sep to separate
+#JELCodes: "L250 \\sep L100"
+
+# ----- Manage headers and footers:
+#BottomLFooter: $Title$
+#BottomCFooter:
+#TopLHeader: \leftmark # Adds section name at topleft. Remove comment to add it.
+BottomRFooter: "\\footnotesize Page \\thepage" # Add a '#' before this line to remove footer.
+addtoprule: TRUE
+addfootrule: TRUE               # Use if footers added. Add '#' to remove line.
+
+# --------- page margins:
+margin: 2.3 # Sides
+bottom: 2 # bottom
+top: 2.5 # Top
+HardSet_layout: TRUE # Hard-set the spacing of words in your document. This will stop LaTeX squashing text to fit on pages, e.g.
+# This is done by hard-setting the spacing dimensions. Set to FALSE if you want LaTeX to optimize this for your paper.
+
+# --------- Line numbers
+linenumbers: FALSE # Used when submitting to journal
+
+# ---------- References settings:
+# You can download cls format here: https://www.zotero.org/ - simply search for your institution. You can also edit and save cls formats here: https://editor.citationstyles.org/about/
+# Hit download, store it in Tex/ folder, and change reference below - easy.
+bibliography: Tex/ref.bib       # Do not edit: Keep this naming convention and location.
+csl: Tex/harvard-stellenbosch-university.csl # referencing format used.
+# By default, the bibliography only displays the cited references. If you want to change this, you can comment out one of the following:
+#nocite: '@*' # Add all items in bibliography, whether cited or not
+# nocite: |  # add specific references that aren't cited
+#  @grinold2000
+#  @Someoneelse2010
+
+# ---------- General:
+RemovePreprintSubmittedTo: TRUE  # Removes the 'preprint submitted to...' at bottom of titlepage
+Journal: "Journal of Finance"   # Journal that the paper will be submitting to, if RemovePreprintSubmittedTo is set to TRUE.
+toc: FALSE                       # Add a table of contents
+numbersections: TRUE             # Should sections (and thus figures and tables) be numbered?
+fontsize: 11pt                  # Set fontsize
+linestretch: 1.2                # Set distance between lines.
+link-citations: TRUE            # This creates dynamic links to the papers in reference list.
+
+### Adding additional latex packages:
+header-includes:
+    - \usepackage{tablefootnote} # Add additional packages here.
+
+output:
+  pdf_document:
+    keep_tex: TRUE
+    template: Tex/TexDefault.txt
+    fig_width: 3.5 # Adjust default figure sizes. This can also be done in the chunks of the text.
+    fig_height: 3.5
+#abstract: |
+---
+
+<!-- First: Set your default preferences for chunk options: -->
+
+<!-- If you want a chunk's code to be printed, set echo = TRUE. message = FALSE stops R printing ugly package loading details in your final paper too. I also suggest setting warning = FALSE and checking for warnings in R, else you might find ugly warnings in your paper. -->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.width = 6, fig.height = 5, fig.pos="H", fig.pos = 'H')
+# Note: Include = FALSE implies the code is executed, but not printed in your pdf.
+# warning and message = FALSE implies ugly messages and warnings are removed from your pdf.
+# These should be picked up when you execute the command chunks (code sections below) in your rmd, not printed in your paper!
+
+# Lets load in example data, and see how this can be stored and later called from your 'data' folder.
+if(!require("tidyverse")) install.packages("tidyverse")
+library(tidyverse)
+pacman::p_load("MTS", "robustbase","fGarch")
+pacman::p_load("tidyverse", "devtools", "rugarch", "rmgarch", 
+    "forecast", "tbl2xts", "lubridate", "PerformanceAnalytics", 
+    "ggthemes", "MTS")
+
+
+
+
+
+Example_data <- Texevier::Ex_Dat
+
+# Notice that as you are working in a .Rproj file (I am assuming you are) - the relative paths of your directories start at your specified root.
+# This means that when working in a .Rproj file, you never need to use getwd() - it is assumed as your base root automatically.
+write_rds(Example_data, path = "data/Example_data.rds")
+
+T40 <- read_rds("data/data_from_exam/T40.rds") # There are 92 stocks in this tbl
+
+RebDays <- read_rds("data/data_from_exam/Rebalance_days.rds")
+
+Capped_SWIX <- read_rds("data/data_from_exam/Capped_SWIX.rds") # This is the Monthly Capped and Weighted Portf Returns for SWIX Index (J433)
+
+
+## I separately load the data for the property index (PROP)
+
+"C:/Users/tianc/Rproj/FinMetrics871_Project/19025831/data/Alsi_Returns.rds" |>  read_rds() -> df
+
+
+
+# I first shrink the dataframe to include only what in needed
+
+T40_a <- df |> select(date, Tickers, Return, Index_Name, J433, J200, J202) |> 
+    
+    mutate(Tickers = gsub(" SJ Equity", "", Tickers))  # Remove clutter in Tickers names
+
+
+T40_b <- T40 |> select(-Short.Name) |> 
+    
+    mutate(Tickers = gsub(" SJ Equity", "", Tickers))  # Remove clutter in Tickers names
+
+# I generate a tbl calculating both Indexes weighted returns by hand
+
+df_Port_ret <- T40_a |> 
+    
+    mutate(J433 = coalesce(J433, 0)) |> 
+    
+    mutate(J200 = coalesce(J200, 0)) |>
+    
+    mutate(J202 = coalesce(J202, 0)) |>
+    
+    mutate(ALSI_wret = Return*J200) |> 
+    
+    mutate(SWIX_wret = Return*J433) |>
+    
+    mutate(SMALLCAP_wret = Return*J202) |>
+    
+    arrange(date) |> 
+    
+    group_by(date) |> 
+    
+    mutate(ALSI_pret = sum(ALSI_wret, na.rm = T)) |> 
+    
+    mutate(SWIX_pret = sum(SWIX_wret, na.rm = T)) |> 
+    
+    mutate(SMALLCAP_pret = sum(SMALLCAP_wret, na.rm = T))
+
+df_Port_ret_B <-  T40_b |> 
+    
+    mutate(J400 = coalesce(J400, 0)) |> 
+    
+    mutate(J400 = coalesce(J400, 0)) |> 
+    
+    mutate(ALSI_wret = Return*J200) |> 
+    
+    mutate(SWIX_wret = Return*J400) |> 
+    
+    arrange(date) |> 
+    
+    group_by(date) |> 
+    
+    mutate(ALSI_pret = sum(ALSI_wret)) |> 
+    
+    mutate(SWIX_pret = sum(SWIX_wret)) 
+
+ 
+
+
+
+
+## Calculate the weight of each property security on each day. And then calculate the UNCAPPED PORTFOLIO RETURN FOR THIS PROPERTY INDEX.
+
+df_property <- df  |>  
+    filter(Sector %in% "Property") |> 
+    select(date, Tickers, Return, Index_Name, Market.Cap) |> 
+    group_by(date) |> mutate(weight = Market.Cap / sum(Market.Cap)) |> 
+    arrange(desc(weight)) |> ungroup() |> 
+    mutate(weight = coalesce(weight, 0)) |>
+    mutate(PROP_wret = Return*weight) |>            # Here I calculate the weighted returns for each porperty security
+    arrange(date) |> 
+    group_by(date) |> 
+    mutate(PROP_pret = sum(PROP_wret, na.rm = T)) |>
+    mutate(Tickers = gsub(" SJ Equity", "", Tickers)) 
+  
+
+    
+## NB ---> Test if the weights on each day sums to one:  df_property |> group_by(date) |> summarise(sum(weight)). (Success)
+
+
+# And now I merge the (uncapped) weighted portfolio return
+
+df_Port_ret1 <- df_Port_ret |> select(date, ALSI_pret, SWIX_pret, SMALLCAP_pret) |> unique() |> left_join(df_property |> select(date, PROP_pret) |> unique(), by  = "date" )
+
+
+# Now I proceed to calculate the Portfolios' cumulative return and plot it
+
+Cum_ret <- df_Port_ret1 |> arrange(date) |> as_tibble() |> 
+    
+    mutate(across(.cols = -date, .fns = ~cumprod(1 + .))) |> 
+    
+    mutate(across(.cols = -date, .fns = ~./first(.))) |> # Start at 1
+    
+    rename("Top40(J200)" = ALSI_pret, "SWIX(J433)" = SWIX_pret, "SMLC(J202)" = SMALLCAP_pret ,PROP = PROP_pret) |> 
+    
+    pivot_longer(cols=-date, names_to = "Index", values_to = "Cumret")
+
+
+# I firt pull the effective rebalance dates
+
+Rebalance_Days <-RebDays |> filter(Date_Type %in% c("Effective Date")) |> pull(date)
+    
+# And now for both Indexes I create a capped weights tbl for rebalancing purposes
+
+rebalance_col_ALSI <- df_Port_ret |> 
+    
+    filter(date %in% Rebalance_Days) |> 
+    
+    select(date, Tickers, J200) |> 
+    
+    rename(weight = J200) |> 
+    
+    mutate(RebalanceTime = format(date, "%Y_%b")) |> 
+    
+    mutate(weight= coalesce(weight, 0))
+    
+ rebalance_col_SWIX <- df_Port_ret |> 
+    
+    filter(date %in% Rebalance_Days) |> 
+    
+    select(date, Tickers, J433) |> 
+     
+     rename(weight = J433) |> 
+     
+     mutate(RebalanceTime = format(date, "%Y_%b")) |> 
+     
+      mutate(weight= coalesce(weight, 0))
+ 
+## For SMALL CAPS
+ 
+ rebalance_col_SMALLCAP <- df_Port_ret |> 
+    
+    filter(date %in% Rebalance_Days) |> 
+    
+    select(date, Tickers, J202) |> 
+     
+     rename(weight = J202) |> 
+     
+     mutate(RebalanceTime = format(date, "%Y_%b")) |> 
+     
+      mutate(weight= coalesce(weight, 0))
+ 
+ 
+## And for the df_property
+ 
+  rebalance_col_PROP <- df_property |> 
+    
+    filter(date %in% Rebalance_Days) |> 
+    
+    select(date, Tickers, weight) |> 
+     
+     mutate(RebalanceTime = format(date, "%Y_%b")) |> 
+     
+      mutate(weight= coalesce(weight, 0))
+  
+  
+  ###### This function applies a capping on the weights. #########
+
+Proportional_Cap_Foo <- function(df_Cons, W_Cap = 0.08){
+  
+  # Let's require a specific form from the user... Alerting when it does not adhere this form
+  if( !"weight" %in% names(df_Cons)) stop("... for Calc capping to work, provide weight column called 'weight'")
+  
+  if( !"date" %in% names(df_Cons)) stop("... for Calc capping to work, provide date column called 'date'")
+  
+  if( !"Tickers" %in% names(df_Cons)) stop("... for Calc capping to work, provide id column called 'Tickers'")
+
+  # First identify the cap breachers...
+  Breachers <- 
+    df_Cons %>% filter(weight > W_Cap) %>% pull(Tickers)
+  
+  # Now keep track of breachers, and add to it to ensure they remain at 10%:
+  if(length(Breachers) > 0) {
+    
+    while( df_Cons %>% filter(weight > W_Cap) %>% nrow() > 0 ) {
+      
+      
+      df_Cons <-
+        
+        bind_rows(
+          
+          df_Cons %>% filter(Tickers %in% Breachers) %>% mutate(weight = W_Cap),
+          
+          df_Cons %>% filter(!Tickers %in% Breachers) %>% 
+            mutate(weight = (weight / sum(weight, na.rm=T)) * (1-length(Breachers)*W_Cap) )
+          
+        )
+      
+      Breachers <- c(Breachers, df_Cons %>% filter(weight > W_Cap) %>% pull(Tickers))
+      
+    }
+
+    if( sum(df_Cons$weight, na.rm=T) > 1.001 | sum(df_Cons$weight, na.rm=T) < 0.999 | max(df_Cons$weight, na.rm = T) > W_Cap) {
+      
+      stop( glue::glue("For the Generic weight trimming function used: the weight trimming causes non unit 
+      summation of weights for date: {unique(df_Cons$date)}...\n
+      The restriction could be too low or some dates have extreme concentrations...") )
+      
+    }
+    
+  } else {
+    
+  }
+  
+  df_Cons
+  
+  }
+  
+
+# Now, to map this across all the dates, I purrr::map_df 
+Capped_ALSI_10 <- 
+    
+    rebalance_col_ALSI |> 
+
+    group_split(RebalanceTime) |> 
+    
+    map_df(~Proportional_Cap_Foo(., W_Cap = 0.1) ) |>  select(-RebalanceTime)
+  
+# Now I do the same for a 6% cap:
+
+Capped_ALSI_6 <- 
+    
+    rebalance_col_ALSI |> 
+
+    group_split(RebalanceTime) |> 
+    
+    map_df(~Proportional_Cap_Foo(., W_Cap = 0.06) ) |>  select(-RebalanceTime)
+
+Capped_SWIX_10 <- 
+    
+    rebalance_col_ALSI |> 
+
+    group_split(RebalanceTime) |> 
+    
+    map_df(~Proportional_Cap_Foo(., W_Cap = 0.1) ) |>  select(-RebalanceTime)
+  
+Capped_SWIX_6 <- 
+    
+    rebalance_col_ALSI |> 
+
+    group_split(RebalanceTime) |> 
+    
+    map_df(~Proportional_Cap_Foo(., W_Cap = 0.06) ) |>  select(-RebalanceTime)
+
+
+Capped_PROP_10 <- 
+    
+    rebalance_col_PROP |> 
+
+    group_split(RebalanceTime) |> 
+    
+    map_df(~Proportional_Cap_Foo(., W_Cap = 0.15) ) |>  select(-RebalanceTime)
+
+
+Capped_SMALLCAP_10 <- 
+    
+    rebalance_col_SMALLCAP |> 
+
+    group_split(RebalanceTime) |> 
+    
+    map_df(~Proportional_Cap_Foo(., W_Cap = 0.1) ) |>  select(-RebalanceTime)
+
+
+
+# # Testing if the max weight is correct for all 4 tbl above
+
+Capped_ALSI_10 %>% pull(weight) %>% max(.) 
+Capped_ALSI_6 %>% pull(weight) %>% max(.) 
+Capped_SWIX_10 %>% pull(weight) %>% max(.) 
+Capped_SWIX_6 %>% pull(weight) %>% max(.) # Success!!
+
+Capped_PROP_10 %>% pull(weight) %>% max(.)
+
+
+####For ALSI capped at 10%#####
+
+wghts_ALSI_10 <- 
+  Capped_ALSI_10 %>% 
+  tbl_xts(cols_to_xts = weight, spread_by = Tickers)
+
+ret_ALSI_10 <- 
+  df_Port_ret %>% 
+  
+  filter(Tickers %in% unique(Capped_ALSI_10$Tickers) ) %>% 
+  
+  tbl_xts(cols_to_xts = Return, spread_by = Tickers)
+
+wghts_ALSI_10[is.na(wghts_ALSI_10)] <- 0
+
+ret_ALSI_10[is.na(ret_ALSI_10)] <- 0
+
+ALSI_10_Idx <- 
+  rmsfuns::Safe_Return.portfolio(R = ret_ALSI_10, weights = wghts_ALSI_10, lag_weights = T) |> 
+  
+  # Then I make it a tibble:
+  xts_tbl() |>  
+  
+  rename(ALSI_10_Idx = portfolio.returns)
+
+####For ALSI capped at 6%#####
+
+wghts_ALSI_6 <- 
+  Capped_ALSI_6 %>% 
+  tbl_xts(cols_to_xts = weight, spread_by = Tickers)
+
+ret_ALSI_6 <- 
+  df_Port_ret %>% 
+  
+  filter(Tickers %in% unique(Capped_ALSI_6$Tickers) ) %>% 
+  
+  tbl_xts(cols_to_xts = Return, spread_by = Tickers)
+
+wghts_ALSI_6[is.na(wghts_ALSI_6)] <- 0
+
+ret_ALSI_6[is.na(ret_ALSI_6)] <- 0
+
+ALSI_6_Idx <- 
+  rmsfuns::Safe_Return.portfolio(R = ret_ALSI_6, weights = wghts_ALSI_6, lag_weights = T) |> 
+  
+  # Then I make it a tibble:
+  xts_tbl() |>  
+  
+  rename(ALSI_6_Idx = portfolio.returns)
+
+####For SWIX capped at 10%#####
+
+wghts_SWIX_10 <- 
+  Capped_SWIX_10 %>% 
+  tbl_xts(cols_to_xts = weight, spread_by = Tickers)
+
+ret_SWIX_10 <- 
+  df_Port_ret %>% 
+  
+  filter(Tickers %in% unique(Capped_SWIX_10$Tickers) ) %>% 
+  
+  tbl_xts(cols_to_xts = Return, spread_by = Tickers)
+
+wghts_SWIX_10[is.na(wghts_SWIX_10)] <- 0
+
+ret_SWIX_10[is.na(ret_SWIX_10)] <- 0
+
+SWIX_10_Idx <- 
+  rmsfuns::Safe_Return.portfolio(R = ret_SWIX_10, weights = wghts_SWIX_10, lag_weights = T) |> 
+  
+  # Then I make it a tibble:
+  xts_tbl() |>  
+  
+  rename(SWIX_10_Idx = portfolio.returns)
+
+
+
+####For SWIX capped at 6%#####
+
+wghts_SWIX_6 <- 
+  Capped_SWIX_6 %>% 
+  tbl_xts(cols_to_xts = weight, spread_by = Tickers)
+
+ret_SWIX_6 <- 
+  df_Port_ret %>% 
+  
+  filter(Tickers %in% unique(Capped_SWIX_6$Tickers) ) %>% 
+  
+  tbl_xts(cols_to_xts = Return, spread_by = Tickers)
+
+wghts_SWIX_6[is.na(wghts_SWIX_6)] <- 0
+
+ret_SWIX_6[is.na(ret_SWIX_6)] <- 0
+
+SWIX_6_Idx <- 
+  rmsfuns::Safe_Return.portfolio(R = ret_SWIX_6, weights = wghts_SWIX_6, lag_weights = T) |> 
+  
+  # Then I make it a tibble:
+  xts_tbl() |>  
+  
+  rename(SWIX_6_Idx = portfolio.returns)
+
+##### For PROP capped at 10% #####
+
+wghts_PROP_10 <- 
+  Capped_PROP_10 %>% 
+  tbl_xts(cols_to_xts = weight, spread_by = Tickers)
+
+ret_PROP_10 <- 
+  df_Port_ret %>% 
+  
+  filter(Tickers %in% unique(Capped_PROP_10$Tickers) ) %>% 
+  
+  tbl_xts(cols_to_xts = Return, spread_by = Tickers)
+
+wghts_PROP_10[is.na(wghts_PROP_10)] <- 0
+
+ret_PROP_10[is.na(ret_PROP_10)] <- 0
+
+PROP_10_Idx <- 
+  rmsfuns::Safe_Return.portfolio(R = ret_PROP_10, weights = wghts_PROP_10, lag_weights = T) |> 
+  
+  # Then I make it a tibble:
+  xts_tbl() |>  
+  
+  rename(PROP_10_Idx = portfolio.returns)
+
+
+### For J202 SMALLCAP capped at 10%##
+
+wghts_SMALLCAP_10 <- 
+  Capped_SMALLCAP_10 %>% 
+  tbl_xts(cols_to_xts = weight, spread_by = Tickers)
+
+ret_SMALLCAP_10 <- 
+  df_Port_ret %>% 
+  
+  filter(Tickers %in% unique(Capped_SMALLCAP_10$Tickers) ) %>% 
+  
+  tbl_xts(cols_to_xts = Return, spread_by = Tickers)
+
+wghts_SMALLCAP_10[is.na(wghts_SMALLCAP_10)] <- 0
+
+ret_SMALLCAP_10[is.na(ret_SMALLCAP_10)] <- 0
+
+SMALLCAP_10_Idx <- 
+  rmsfuns::Safe_Return.portfolio(R = ret_SMALLCAP_10, weights = wghts_SMALLCAP_10, lag_weights = T) |> 
+  
+  # Then I make it a tibble:
+  xts_tbl() |>  
+  
+  rename(SMALLCAP_10_Idx = portfolio.returns)
+
+
+Capped_df_final <- ALSI_10_Idx |> 
+    inner_join(PROP_10_Idx, by ="date") |> 
+    inner_join(SMALLCAP_10_Idx, by ="date") |> 
+    arrange(date) |> 
+    mutate(across(.cols = -date, .fns = ~cumprod(1+.))) |> # cumulative returns
+    mutate(across(.cols = -date, .fns = ~./first(.))) |>   # Start at 1
+    left_join(Cum_ret |> filter(Index %in% "SWIX(J433)") |> pivot_wider(names_from = "Index", values_from = "Cumret"), by = "date") |> 
+    
+    
+    
+    rename("Top40(J200)" = ALSI_10_Idx , "PROP" = PROP_10_Idx , "SMLC(J202)" = SMALLCAP_10_Idx) |> # rename for clarity
+    
+    pivot_longer(cols = -date, names_to = "Description", values_to = "Values")
+
+
+pacman::p_load("MTS", "robustbase","fGarch")
+pacman::p_load("tidyverse", "devtools", "rugarch", "rmgarch", 
+    "forecast", "tbl2xts", "lubridate", "PerformanceAnalytics", 
+    "ggthemes", "MTS")
+
+df_DCC <- Capped_df_final |> 
+    pivot_wider(names_from = "Description", values_from = "Values") |> 
+    pivot_longer(cols = -date,names_to = "Index", values_to = "Cum_ret")
+
+
+
+SD_plot_data <- df_DCC |>  arrange(date) |> 
+    
+    group_by(Index) |> 
+    
+    mutate(Growth = log(Cum_ret) - lag(log(Cum_ret))) |> 
+    
+    filter(date > dplyr::first(date)) |>  
+    
+    mutate(scaledgrowth = Growth - mean(Growth, rm.na = T)) |>     # Scale the Growth by demeaning
+    
+    mutate(SampleSD = (sqrt(scaledgrowth^2))) |> 
+    
+    ungroup() 
+
+
+df_DCC <- Capped_df_final |> 
+    pivot_wider(names_from = "Description", values_from = "Values") |> 
+    pivot_longer(cols = -date,names_to = "Index", values_to = "Cum_ret")
+
+
+
+######   ########
+
+gwt1 <- SD_plot_data |> select(date, Index, Growth) |> filter(Index %in% c("SWIX(J433)", "PROP", "SMLC(J202)"))
+
+
+
+# Change to xts format
+
+
+gwt_xts1 <- gwt1 |> 
+    
+    tbl_xts(cols_to_xts = Growth, spread_by = Index)
+
+# MV Portmanteau tests
+
+
+MarchTest(gwt_xts1)
+
+
+# As in the tut, I select a VAR order of zero for the mean equation, and simply use the mean of each series.
+# The mean equation is thus in our case simply: Growth = mean(Growth) + et
+
+# Then, for every series, a standard univariate GARCH(1,1) is run - giving us:
+# et and sigmat, which is then used to calculate the standardized resids, zt, which is used in DCC calcs after.
+
+DCCPre <- dccPre(gwt_xts1, include.mean = T, p=0) # Find a nice way to put this in a table
+
+
+Vol <- DCCPre$marVol
+
+colnames(Vol) <- colnames(gwt_xts1)
+
+Vol <- 
+  data.frame( cbind( date = index(gwt_xts1), Vol)) |>  # Add date column which dropped away...
+  mutate(date = as.Date(date)) |>  tibble::as_tibble()  # make date column a date column...
+
+
+
+TidyVol <- Vol |>  pivot_longer(names_to = "Indexes", values_to =  "Sigma", cols =  -date)
+
+
+StdRes <- DCCPre$sresi
+
+# I first do the detach trick from the tut:
+
+pacman::p_load(tidyverse,fmxdat, rmsfuns, tbl2xts, tidyr, ggpubr, broom,rstatix, modelr )
+
+detach("package:tidyverse", unload=TRUE)
+detach("package:fmxdat", unload=TRUE)
+detach("package:rmsfuns", unload=TRUE)
+detach("package:tbl2xts", unload=TRUE)
+detach("package:ggpubr", unload=TRUE)
+detach("package:rstatix", unload=TRUE)
+detach("package:modelr", unload=TRUE)
+detach("package:broom", unload=TRUE)
+detach("package:tidyr", unload=TRUE)
+detach("package:dplyr", unload=TRUE)
+
+DCC <- dccFit(StdRes,type = "Engle") 
+
+pacman::p_load(tidyverse,fmxdat, rmsfuns, tbl2xts, tidyr, ggpubr, broom,rstatix, modelr )
+
+
+Rhot <- DCC$rho.t
+# Right, so it gives us all the columns together in the form:
+# X1,X1 ; X1,X2 ; X1,X3 ; ....
+
+# So, let's be clever about defining more informative col names. 
+# I will create a renaming function below:
+ReturnSeries = gwt_xts1
+DCC.TV.Cor = Rhot
+
+renamingdcc <- function(ReturnSeries, DCC.TV.Cor) {
+  
+ncolrtn <- ncol(ReturnSeries)
+namesrtn <- colnames(ReturnSeries)
+paste(namesrtn, collapse = "_")
+
+nam <- c()
+xx <- mapply(rep, times = ncolrtn:1, x = namesrtn)
+# Now let's be creative in designing a nested for loop to save the names corresponding to the columns of interest.. 
+
+# TIP: draw what you want to achieve on a paper first. Then apply code.
+
+# See if you can do this on your own first.. Then check vs my solution:
+
+nam <- c()
+for (j in 1:(ncolrtn)) {
+for (i in 1:(ncolrtn)) {
+  nam[(i + (j-1)*(ncolrtn))] <- paste(xx[[j]][1], xx[[i]][1], sep="_")
+}
+}
+
+colnames(DCC.TV.Cor) <- nam
+
+# So to plot all the time-varying correlations wrt SBK:
+ # First append the date column that has (again) been removed...
+DCC.TV.Cor <- 
+    data.frame( cbind( date = index(ReturnSeries), DCC.TV.Cor)) %>% # Add date column which dropped away...
+    mutate(date = as.Date(date)) %>%  tbl_df() 
+
+DCC.TV.Cor <- DCC.TV.Cor %>% gather(Pairs, Rho, -date)
+
+DCC.TV.Cor
+
+}
+
+# Let's see if our function works! Excitement!
+Rhot <- 
+  renamingdcc(ReturnSeries = gwt_xts1, DCC.TV.Cor = Rhot)
+
+head(Rhot %>% arrange(date))
+
+
+
+
+
+
+```
+
+
+<!-- ############################## -->
+<!-- # Start Writing here: -->
+<!-- ############################## -->
+
+# Introduction \label{Introduction}
+
+Investors tend to diversify components of their investment portfolios to property assets to mitigate their portfolio's downside risk. In addition, listed property securities are attractive as they generally yield high dividends and showcase potential moderate long-term capital appreciation. However, in the past decade, FTSE/JSE-listed property securities have performed weakly and have become significantly more volatile. Moreover, the correlation between FTSE/JSE-listed property securities and alternative financial assets has become more positive, placing its diversification benefits under scrutiny [@oberholzer2015univariate; @ijasan2017anti; @carstens2020pull].
+
+To this extent, this project investigates time-varying conditional correlations between FTSE/JSE-listed property securities and the broader FTSE/JSE assets by adopting the parsimonious Dynamic Conditional Correlation (DCC) Multivariate Generalized Autoregressive Conditional Heteroskedasticity (MV GARCH) modelling procedure. 
+
+To do so, I construct a market capitalisation-weighted portfolio of all the FTSE/JSE-listed property constituents, dubbed PROP, and compare its time-varying conditional correlations with the JSE Small Cap Index (SMLC(J202)) and Shareholder Weighted Index  (SWIX(J433)). The self-constructed PROP index closely imitates the JSE The FTSE/JSE All Property Index (J803), however, also includes all small-and-medium-cap constituents. The indexes’ cumulative returns, together with the JSE Top 40 Index (Top40(J200)), are shown in Figure \ref{Figure1} below.^[All indexes’ weighting is capped at 10$\%$, except for the SMLC(J202), which is capped at 15$\%$.] The PROP index performance has weakened and becomes increasingly unstable in the recent decade, amplified during recessionary periods (blue-shaded area).
+
+```{r Figure1,  warning =  FALSE, fig.align = 'center', fig.cap = "Cumulative Returns \\label{Figure1}", fig.ext = 'png', fig.height = 4, fig.width = 6.5}
+  # This is just a random plot to show you a plot. This is done if the getwd() does not point to your Template's directory.
+  # Set WD below to your project's working directory.
+
+  capping_plot_all <- Capped_df_final |>  ggplot() + 
+  
+  geom_line(aes(date, Values , color = Description), size = 0.6, alpha = 0.7) +
+    
+    annotate("rect", xmin = lubridate::ymd("20130301"), xmax = lubridate::ymd("20161201"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+     annotate("rect", xmin = lubridate::ymd("20071201"), xmax = lubridate::ymd("20090801"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+     annotate("rect", xmin = lubridate::ymd("20190101"), xmax = lubridate::ymd("20200701"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+  
+   fmxdat::theme_fmx(title.size = fmxdat::ggpts(25), 
+                    subtitle.size = fmxdat::ggpts(20),
+                    caption.size = fmxdat::ggpts(20),
+                    CustomCaption = T, legend.size = ggpts(25), axis.size.title = ggpts(25), axis.size = ggpts(25)) + 
+    
+  fmxdat::fmx_cols() + 
+  
+  labs(x = "", y = "%", caption = "Note: Calculation own. The blue shaded areas reflect SA's economic recessions as defined by the OECD.",
+       title = "Cumulative Returns of PROP, SMLC(J202), SWIX(J433), and Top40(J200)",
+       subtitle = "All indexes are capped at 10% except for SMLC(J202) which is capped at 15%.")
+
+# Finplot for finishing touches:
+
+fmxdat::finplot(capping_plot_all, x.vert = T, x.date.type = "%Y", x.date.dist = "1 year", darkcol = F)
+
+```
+
+
+The DCC MV-GARCH model’s results suggest that, on aggregate, the comovement between PROP, SWIX(J433), and SMLC(J202) is amplified during periods of heightened global economic uncertainty.  Although the PROP index is the most volatile of the indexes and the SMLC(J202) index the least volatile, it exhibits a substantially lower time-varying conditional correlation with the SWIX(J433) index compared to the SMLC(J202) index. However, since 2016, this difference has shrunk marginally. On the other hand, the dynamic conditional correlation between the SMLC(J202) and SWIX(J433) indexes is the highest and the more stable among the three index pairs considered. These results infer that an investor holding large proportions of SWIX(J433) constituents will achieve superior portfolio diversification in purchasing listed property compared to SMLC(J202) constituents.  
+
+
+# Results: Inter-Index Comovement and Estimated Volatility
+
+The time-varying dynamic conditional correlations (DCC) are estimated using the estimated univariate GARCH(1,1) models’ standardised residuals in the second stage of estimation. 
+
+The estimated volatility for each index and time-varying DCC between the PROP, SMLC(J202), and SWIX(J433) indexes are depicted in Figures \ref{Figure2} and \ref{Figure3}, respectively.^[Also see \ref{aa} for the (unmodeled) sample scaled growth and standard deviation in Figures \ref{aa1} and \ref{aa2}, respectively.] Figure \ref{Figure3} shows that heterogeneity exists between the index pairs over time, indicating that stationary correlation modelling estimates (for example, the Constant Conditional Correlations or CCC) could be deceptive.^[I drop the Top40(J200) index due to its similar dynamics to the SWIX(J433) index.]
+
+Table \ref{DCC} reports the coefficients $a$ and $b$'s estimates and corresponding p-values.  From @katzke2013, these estimates signify mean reversion of the time-varying correlations since $a + b < 1$. The impact of lagged standardised shocks on dynamic conditional correlations is measured by the coefficient $a$. In contrast, the measure of the past effect of the dynamic conditional correlations on present dynamic conditional correlations is given by $b$. These parameters are, additionally, statistically significant at the 5$\%$ level, except for the $a$ and $b$ coefficients for SMLC(J202), which is significant at the  10$\%$ level. Again following @katzke2013, this indicates significant deviations over time, reaffirming that a DCC model is more fitting than a CCC model. 
+
+The corresponding estimated DCC model diagnostics, checking for conditional heteroscedasticity through testing for serial correlation, is reported in Table \ref{MARCH} below. As stated by @tsay2013, when the shocks are heavy-tailed, the parameters $Q(m)$ and $Q_k(m)$ often fail to detect the presence of conditional heteroscedasticity, and the  $Q_k^r (m)$ robustness parameter is desirable. Consequently, the fitted DCC model fails to reject the null of no autocorrelation when considering the rank-based test and the robustness parameter $Q_k^r (m)$. 
+
+The model's estimated volatility for each index (Figure \ref{Figure2}) shows that PROP is the most volatile in comparison to the SMLC(J202) and SWIX(J433) indexes, especially in the past decade, possessing substantially larger jumps in volatility during recessionary periods (blue shaded areas). Moreover, the SMLC(J202) index is the least volatile.  
+
+In analysing the estimated dynamic conditional correlations across index pairs (Figure \ref{Figure3}), the PROP index exhibits a substantially lower time-varying conditional correlation with the SWIX(J433) index compared to the SMLC(J202) index. However, since 2016, this difference has shrunk marginally. On the other hand, the dynamic conditional correlation between the SMLC(J202) and SWIX(J433) indexes is the highest and the more stable among the three index pairs considered.    
+   
+
+```{r Figure2, warning =  FALSE,  fig.align = 'center', fig.cap = "DCC GARCH: Estimated Volatility \\label{Figure2}", fig.ext = 'png', fig.height = 4, fig.width = 6.5}
+
+TidyVol_plot <- TidyVol |> ggplot() + 
+  
+  geom_line(aes(date, Sigma , color = Indexes), size = 0.7, alpha = 0.7) +
+    
+    annotate("rect", xmin = lubridate::ymd("20130301"), xmax = lubridate::ymd("20161201"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+     annotate("rect", xmin = lubridate::ymd("20071201"), xmax = lubridate::ymd("20090801"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+     annotate("rect", xmin = lubridate::ymd("20190101"), xmax = lubridate::ymd("20200701"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+  
+   fmxdat::theme_fmx(title.size = fmxdat::ggpts(25), 
+                    subtitle.size = fmxdat::ggpts(0),
+                    caption.size = fmxdat::ggpts(20),
+                    CustomCaption = T, legend.size = ggpts(25), axis.size.title = ggpts(25), axis.size = ggpts(25)) + 
+    
+  fmxdat::fmx_cols() + 
+  
+  labs(x = "", y = "Sigma", caption = "Note: Calculation own. The blue shaded areas reflect SA's economic recessions as defined by the OECD.",
+       title = "Estimated Volatility (Sigma) for Each Currency",
+       subtitle = "")
+    
+# And finally touches with finplot    
+
+fmxdat::finplot(TidyVol_plot, x.vert = T, x.date.type = "%Y", x.date.dist = "1 years", darkcol = F, legend_pos = "top")
+
+```
+
+
+
+```{r Figure3, warning =  FALSE,  fig.align = 'center', fig.cap = "DCC GARCH: Dynamic Conditional Correlations \\label{Figure3}", fig.ext = 'png', fig.height = 5, fig.width = 6.5}
+
+DCC_plot_PROP <- Rhot|>  filter(!grepl("SWIX.J433._", Pairs ), !grepl("_PROP", Pairs),  !grepl("SMLC.J202._SMLC.J202.", Pairs) ) |>
+    
+    ggplot() +
+    
+    geom_line(aes(x = date, y = Rho, colour = Pairs),size = 0.4, alpha = 1 ) + 
+    
+    
+    annotate("rect", xmin = lubridate::ymd("20130301"), xmax = lubridate::ymd("20161201"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+     annotate("rect", xmin = lubridate::ymd("20071201"), xmax = lubridate::ymd("20090801"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+     annotate("rect", xmin = lubridate::ymd("20190101"), xmax = lubridate::ymd("20200701"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+    facet_wrap(~Pairs) +
+    
+   fmxdat::theme_fmx(title.size = fmxdat::ggpts(25), 
+                    subtitle.size = fmxdat::ggpts(0),
+                    caption.size = fmxdat::ggpts(20),
+                    CustomCaption = T, strip.size = ggpts(25), axis.size.title = ggpts(25), axis.size = ggpts(25)) + 
+  fmxdat::fmx_cols() + 
+  
+  labs(x = "", y = "Sigma", caption = "Note: Calculation own. The blue shaded areas reflect SA's economic recessions as defined by the OECD.",
+       title = "Dynamic Conditional Correlations",
+       subtitle = "")
+    
+# And finally touches with finplot    
+
+fmxdat::finplot(DCC_plot_PROP, x.vert = T, x.date.type = "%Y", x.date.dist = "2 years", darkcol = T, legend_pos = "none", col.hue = 40)
+
+```
+
+
+\begin{center}
+\begin{longtable}{|ccc|}
+\caption{DCC Model \label{DCC}} \\
+\hline
+\multicolumn{1}{|c}{}& 
+\multicolumn{1}{c}{$a$}& 
+\multicolumn{1}{c|}{$b$}\\
+\hline \hline
+\endhead
+SWIX(J433)  & 0.147 & 0.841 \\ 
+            & (0.0345) & (0)\\
+SMLC(J202)  & 0.135 & 0.836 \\ 
+            & (0.09172) & (0.01)\\
+PROP        & 0.0996 & 0.8814 \\ 
+            & (0.00038) & (0)\\
+\hline
+\multicolumn{3}{|l|}{Note: P-values given in brackets}\\
+\hline
+\end{longtable}
+\end{center}
+
+\begin{center}
+\begin{longtable}{|cccc|}
+\caption{Model Diagnostics \label{MARCH}} \\
+\hline
+\multicolumn{1}{c}{$Q(m)$}& 
+\multicolumn{1}{c}{$Rank-based \ test$}& 
+\multicolumn{1}{c}{$Q_k(m)$}&
+\multicolumn{1}{c|}{$Q_r^{k} (m)$}\\
+\hline \hline
+\endhead
+599.07  & 12.69 & 369.79 & 175.44\\ 
+(0)    & (0.25044) & (0.0784 & (0.19111)\\
+\hline
+\multicolumn{4}{|l|}{Note: P-values given in brackets.}\\
+\hline
+\end{longtable}
+\end{center}
+
+# Conclusion
+
+The purpose of this project is to investigate time-varying conditional correlations between FTSE/JSE-listed property securities and the broader FTSE/JSE assets by adopting the Dynamic Conditional Correlation (DCC) Multivariate Generalized Autoregressive Conditional Heteroskedasticity (MV GARCH) modelling procedure. 
+
+The DCC MV-GARCH model’s results suggest that, on aggregate, the comovement between PROP, SWIX(J433), and SMLC(J202) is amplified during periods of heightened global economic uncertainty.  Although the PROP index is the most volatile of the indexes and the SMLC(J202) index the least volatile, it exhibits a substantially lower time-varying conditional correlation with the SWIX(J433) index compared to the SMLC(J202) index. However, since 2016, this difference has shrunk marginally. On the other hand, the dynamic conditional correlation between the SMLC(J202) and SWIX(J433) indexes is the highest and the more stable among the three index pairs considered. These results infer that an investor holding large proportions of SWIX(J433) constituents will achieve superior portfolio diversification in purchasing listed property compared to SMLC(J202) constituents.  
+
+
+
+
+<!-- Make title of bibliography here: -->
+<!-- \newpage -->
+
+\newpage
+
+# References {-}
+
+<div id="refs"></div>
+
+
+\newpage
+\appendix
+\renewcommand{\thesection}{Appendix A}
+
+#  \label{aa}
+
+```{r aa1, warning =  FALSE,  fig.align = 'center', fig.cap = "Scaled Growth\\label{aa1}", fig.ext = 'png', fig.height = 8, fig.width = 6}
+
+Scaledgrowth_plot_df <-  SD_plot_data |> 
+ 
+    ggplot() + 
+  
+  geom_line(aes(date, scaledgrowth , color = Index), size = 0.6, alpha = 0.7) +
+    
+    facet_wrap(~Index, scales = "free_y")+
+    
+    
+    
+    
+    
+    annotate("rect", xmin = lubridate::ymd("20130301"), xmax = lubridate::ymd("20161201"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+     annotate("rect", xmin = lubridate::ymd("20071201"), xmax = lubridate::ymd("20090801"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+     annotate("rect", xmin = lubridate::ymd("20190101"), xmax = lubridate::ymd("20200701"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+  
+  fmxdat::theme_fmx(title.size = fmxdat::ggpts(25), 
+                    subtitle.size = fmxdat::ggpts(0),
+                    caption.size = fmxdat::ggpts(20),
+                    CustomCaption = T, strip.size = ggpts(25), axis.size.title = ggpts(25), axis.size = ggpts(25)) + 
+  fmxdat::fmx_cols() + 
+  
+  labs(x = "", y = "%", caption = "Note: Calculation own. The blue shaded areas reflect SA's economic recessions as defined by the OECD.",
+       title = "Scaled (demeaned) Log Growth of Respective Indexes.",
+       subtitle = "")
+
+fmxdat::finplot(Scaledgrowth_plot_df, x.vert = T, x.date.type = "%Y", x.date.dist = "2 years", darkcol = T)
+
+```
+
+
+```{r aa2, warning =  FALSE, fig.align = 'center', fig.cap = "Sample Standard Deviation \\label{aa2}", fig.ext = 'png', fig.height = 8, fig.width = 6}
+
+SD_plot <- SD_plot_data |>  
+
+  ggplot() + 
+  
+   geom_line(aes(date, SampleSD , color = Index), size = 0.6, alpha = 0.7) +
+    
+    
+    annotate("rect", xmin = lubridate::ymd("20130301"), xmax = lubridate::ymd("20161201"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+     annotate("rect", xmin = lubridate::ymd("20071201"), xmax = lubridate::ymd("20090801"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+     annotate("rect", xmin = lubridate::ymd("20190101"), xmax = lubridate::ymd("20200701"), ymin = -Inf, ymax = Inf,alpha = .2, fill='steelblue', alpha= 0.05) +
+    
+    facet_wrap(~Index, scales = "free_y")+
+  
+  fmxdat::theme_fmx(title.size = fmxdat::ggpts(25), 
+                    subtitle.size = fmxdat::ggpts(0),
+                    caption.size = fmxdat::ggpts(20),
+                    CustomCaption = T, strip.size = ggpts(25), axis.size.title = ggpts(25), axis.size = ggpts(25)) + 
+    
+  fmxdat::fmx_cols() + 
+  
+  labs(x = "", y = "%", caption = "Note: Calculation own. The blue shaded areas reflect SA's economic recessions as defined by the OECD.",
+       title = "Sample Standard Deviation of Respective Indexes",
+       subtitle = "")
+
+# Finplot for finishing touches:
+
+
+fmxdat::finplot(SD_plot, x.vert = T, x.date.type = "%Y", x.date.dist = "2 years", darkcol = T)
+
+```
+
+
+
+
+
+
